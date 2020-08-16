@@ -2,6 +2,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
 import time
+import os.path
 
 class SquareLattice(object):
     """docstring for SquareLattice."""
@@ -13,31 +14,48 @@ class SquareLattice(object):
         self.m = n+1
 
         # create square lattice and collect positions of nodes
-        G, pos = self.square_lattice(self.n,self.m)
-        self.G = G
-        self.pos = pos
+        if os.path.exists('test.edgelist'):
+            self.G = self.load_graph()
+        else:
+            self.G = self.square_lattice(self.n,self.m)
+            self.initialize_edge_weights()
+            self.save_graph()
+
+        # defines node positions
+        self.pos = self.positions(self.n, self.m)
 
         # node colors need to reflect state: S (blue), I (red), R (green/black)
         self.node_color = ['b']*self.n*self.m
         # edge color may change to red to reflect active edges
-        self.edge_color = ['k']*len(G.edges)
+        self.edge_color = ['k']*len(self.G.edges)
 
-        self.initialize_edge_weights()
-        # self.view_current_state()
+        print(self.G)
         self.infect()
-        self.view_current_state()
+        self.view_current_state(True)
+
+    def save_edge_list(self):
+        nx.write_weighted_edgelist(self.G, 'test.edgelist')
+
+    def load_edge_list(self):
+        return nx.read_edgelist('test.edgelist')
+
+    def save_graph(self):
+        nx.write_graphml(self.G, 'squarelattice.graphml')
+
+    def load_graph(self):
+        return nx.read_graphml('squarelattice.graphml')
 
     # generate square lattice
     def square_lattice(self, n=4,m=5):
         L = 1.0; M = 1.0;
         G = nx.Graph()
-        pos = {}
         c = 0
         # adding nodes in square lattice
         for i in range(n):
             for j in range(m):
                 G.add_node(c)
-                pos[c] = np.array([i/L, j/M])
+                G.node[c]['x'] = L*float(i)/n
+                G.node[c]['y'] = M*float(j)/m
                 c+=1
         # add edges between nodes
         c = 0
@@ -49,7 +67,18 @@ class SquareLattice(object):
                 if c%m != n:
                     G.add_edge(c, (c+1)%N)
                 c+=1
-        return G, pos
+        return G
+
+    def positions(self, n=4, m=5):
+        L = 1.0; M=1.0
+        pos = {}
+        c = 0
+        # adding nodes in square lattice
+        for i in range(n):
+            for j in range(m):
+                pos[c] = [L*float(i)/n, M*float(j)/m]
+                c+=1
+        return pos
 
     def initialize_edge_weights(self):
         '''
@@ -76,12 +105,12 @@ class SquareLattice(object):
         labels = nx.get_edge_attributes(self.G, 'theta')
         if view_edge_weights:
             nx.draw_networkx_edge_labels(self.G, self.pos, edge_labels=labels)
-        nx.draw_networkx(self.G, self.pos, node_color=self.node_color)
+        # nx.set_node_attributes(self.G, 'pos', self.pos)
+        nx.draw(self.G, self.pos, node_color=self.node_color)
+        # nx.draw_networkx(self.G, self.pos, node_color=self.node_color)
         plt.title('IC_initial_condition')
         plt.savefig('IC_initial_condition')
         plt.show()
-
-
 
     def infect(self):
         '''
@@ -212,11 +241,6 @@ def LT_step():
     # threshold than the sum total of infected neighbor weights
     if (cum_weights <= thresholds).all(): terminate = 1
     return G, terminate
-
-
-    # return G
-
-
 
 def sample_active_edges():
     global G, edge_color
