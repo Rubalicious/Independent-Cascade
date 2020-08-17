@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import time
 import os.path
+import random
+import sys
 
 class SquareLattice(object):
     """docstring for SquareLattice."""
@@ -14,12 +16,12 @@ class SquareLattice(object):
         self.m = n+1
 
         # create square lattice and collect positions of nodes
-        if os.path.exists('test.edgelist'):
-            self.G = self.load_graph()
-        else:
-            self.G = self.square_lattice(self.n,self.m)
-            self.initialize_edge_weights()
-            self.save_graph()
+        # if os.path.exists('squarelattice.graphml'):
+        #     self.G = self.load_graph()
+        # else:
+        self.G = self.square_lattice(self.n,self.m)
+        self.initialize_edge_weights()
+        # self.save_graph()
 
         # defines node positions
         self.pos = self.positions(self.n, self.m)
@@ -29,8 +31,8 @@ class SquareLattice(object):
         # edge color may change to red to reflect active edges
         self.edge_color = ['k']*len(self.G.edges)
 
-        self.infect()
-        self.view_current_state()
+        # self.infect()
+        # self.view_current_state()
 
     def save_edge_list(self):
         nx.write_weighted_edgelist(self.G, 'test.edgelist')
@@ -89,8 +91,9 @@ class SquareLattice(object):
         '''
         for node in self.G.nodes:
             # each node is infectious for some number of days
-            # self.G.nodes[node]['infectious'] = np.random.randint(0,5)
-            self.G.nodes[node]['infectious'] = np.random.poisson(4.0)
+            # assign number of days infectious for and a count to keep track
+            # self.G.nodes[node]['infectious'] = [np.random.randint(0,5), 0]
+            self.G.nodes[node]['infectious'] = [np.random.poisson(4.0), 0]
             # susceptible: flag == 0, infected: flag == 1, recovered: flag == 2
             self.G.nodes[node]['flag'] = 0
             out_degree = len(list(self.G.neighbors(node)))
@@ -100,7 +103,7 @@ class SquareLattice(object):
             for suc in list(self.G.neighbors(node)):
                 # assign to each edge of a node's successors
                 self.G[node][suc]['theta'] = np.round(theta[i], 3)
-                self.G[node][suc]['active'] = 0
+                # self.G[node][suc]['active'] = 0
                 i+=1
 
     def view_current_state(self,view_edge_weights=False):
@@ -108,25 +111,28 @@ class SquareLattice(object):
             plots current state of network
         '''
         labels = nx.get_edge_attributes(self.G, 'theta')
+
+        # to view weights associated for each edge
         if view_edge_weights:
             nx.draw_networkx_edge_labels(self.G, self.pos, edge_labels=labels)
-        # nx.set_node_attributes(self.G, 'pos', self.pos)
+
         nx.draw(self.G, self.pos,
             node_color=self.node_color,
             edge_color=self.edge_color,
             width=4
         )
-        # nx.draw_networkx(self.G, self.pos, node_color=self.node_color)
-        plt.title('IC_initial_condition')
-        plt.savefig('IC_initial_condition')
+
+        plt.title('IC current state')
+        # plt.savefig('IC current state')
         plt.show()
 
-    def infect(self):
+    def infect(self, infected=None):
         '''
             choose one person to be infected and assign flags to each node
         '''
         # choose infected nodes here
-        infected = [90]
+        if infected is None:
+            infected = [90]
 
         for node in self.G.nodes:
             if node in infected:
@@ -148,23 +154,25 @@ class SquareLattice(object):
         return v
 
 
-    def IC_step(self, A=None):
+    def IC_step(self, A=None, shuffle=0):
         '''
             Simulate one step of the Independent Cascade Model
             Can give a set of Active edges
+            Can shuffle order of iterating through infected nodes
         '''
         v = self.build_state_vector()
         infected = [idx for idx,val in enumerate(v) if val == 1]
         recovered = [idx for idx,val in enumerate(v) if val == 2]
+
+        if shuffle == 1:
+            random.shuffle(infected)
         # for each infected node
         for inf in infected:
             # and for each neighbor of the infected node
             for nei in self.G.neighbors(inf):
                 # skip node if neighbor is recovered
                 if nei in recovered:    continue
-
                 # infect neighbors according to active edges
-
                 if A is not None:
                     l = [inf,nei]
                     l.sort()
@@ -181,13 +189,19 @@ class SquareLattice(object):
             # infected node has been infectious for
             # this is the area of modification/generalization
             # then set infected node to recovered
-            self.G.nodes[inf]['flag'] = 2
+            infectious = self.G.nodes[inf]['infectious']
+            if infectious[1] == infectious[0]:
+                # node recovers
+                self.G.nodes[inf]['flag'] = 2
+            else:
+                # it is infectious for one more time step
+                self.G.nodes[inf]['infectious'][1] += 1
 
-    def update(self, A=None):
+    def update(self, A=None, reverse=0):
         '''
             updates the graph, changes node colors, plots current state
         '''
-        self.IC_step(A)
+        self.IC_step(A, reverse)
         # update colors
         for node in self.G.nodes:
             if self.G.nodes[node]['flag'] == 1:
@@ -195,7 +209,7 @@ class SquareLattice(object):
             if self.G.nodes[node]['flag'] == 2:
                 self.node_color[node] = 'k'
 
-        self.view_current_state()
+        # self.view_current_state()
 
     def is_totally_infected(self):
         '''
@@ -233,14 +247,15 @@ class SquareLattice(object):
         )
         plt.show()
 
-    def static_process(self):
+    def static_process(self, A=None):
         '''
             make each node reachable to an infected node through active edges infected
         '''
         v = self.build_state_vector()
         infected = [idx for idx,val in enumerate(v) if val == 1]
-        A = self.sample_active_edges()
-        self.view_active_edges()
+        if A is None:
+            A = self.sample_active_edges()
+        # self.view_active_edges()
 
         # create temporary subgraph of active edges only
         Temp = nx.Graph()
@@ -251,10 +266,27 @@ class SquareLattice(object):
 
         # infect nodes that can be reached from the seed set through active edges
         for inf in infected:
-            for node in Temp:
+            for node in self.G.nodes:
                 if nx.has_path(Temp, inf, node):
                     self.node_color[node] = 'k'
+                    self.G.nodes[node]['flag'] = 2
 
+    def reset(self):
+        '''
+            resets the the graph to all susceptible without changing weights
+            this resets all active edges too
+        '''
+        self.node_color = ['b']*self.n*self.m
+        self.edge_color = ['k']*len(self.G.edges)
+        for node in self.G.nodes:
+            self.G.nodes[node]['flag'] = 0
+            self.G.nodes[node]['infectious'][1] = 0
+
+    def collect_final_configuration(self):
+        '''
+            collect all recovered nodes
+        '''
+        pass
 
 
 
@@ -327,23 +359,6 @@ def LT_step():
     return G, terminate
 
 
-
-def demonstrate_active_edges():
-    global G, edge_color
-    # G,N = build_lattice_from(theta)
-    labels = nx.get_edge_attributes(G,'theta')
-    # nx.draw_networkx_edge_labels(G,pos,edge_labels=labels)
-    nx.draw_networkx(G, pos, node_color=node_color)
-    nx.draw_networkx_edges(G, pos, edge_color=edge_color, width=3)
-    plt.savefig('inactive_edges')
-    plt.show()
-
-    A = sample_active_edges()
-    nx.draw_networkx(G, pos, node_color=node_color)
-    nx.draw_networkx_edges(G, pos, edge_color=edge_color, width=3)
-    plt.savefig('active_edges')
-    plt.show()
-
 def number_of_reachable_nodes(x,A):
     # count the number of nodes that can be reached through A
     # from node x
@@ -363,23 +378,70 @@ def compute_infection_kernel(G):
     K = 0
     return A1,A2
 
+
+
 def main():
     n = 13
     sq = SquareLattice(n)
 
-    A = sq.sample_active_edges()
-    print(A)
-    sq.view_active_edges(A)
 
-    while not sq.is_totally_infected():
-        sq.update(A)
-    #     plt.title('IC_iter_{}'.format(i))
-    #     plt.savefig('IC_iter_{}'.format(i))
 
-    # view active edges
-    # sq.sample_active_edges()
-    # sq.static_process()
+    # dynamic process:
+    def dynamic_process(sq, shuffle=0):
+        sq.infect([90])
+        # sq.view_current_state()
+        A = sq.sample_active_edges()
+        # sq.view_active_edges(A)
+        while not sq.is_totally_infected():
+            sq.update(A, shuffle)
+        v = sq.build_state_vector()/2
+        # sq.view_current_state()
+        sq.reset()
+        return A, v
+
+    def static_process_exp(sq):
+        sq.infect([90])
+        # sq.view_current_state()
+        A = sq.sample_active_edges()
+        sq.static_process(A)
+        # sq.view_current_state()
+        v = sq.build_state_vector()
+        sq.reset()
+        return A,v
+
+    # A,v = dynamic_process(sq,1)
+    A,v = static_process_exp(sq)
+    N = 5000
+    for i in range(N):
+        # A,w = dynamic_process(sq, 1)
+        A,w = static_process_exp(sq)
+        sys.stdout.write('\r')
+        sys.stdout.write('{}% complete'.format(100*float(i)/N))
+        sys.stdout.flush()
+        v+=w
+    # print(v/N)
+    v = np.array(v)
+    v = np.reshape(v,(n,n+1))
+    plt.imshow(v/N, cmap='hot')
+    plt.colorbar()
+    # plt.plot(range(sq.n*sq.m), v/N)
+    plt.show()
+
+
+
+    # A,v = dynamic_process(sq)
+    # A,v = dynamic_process(sq)
+    # A,v = dynamic_process(sq)
+    # # dynamic process with shuffling
+    # A,v = dynamic_process(sq,1)
+    #
+    # sq.reset()
+    # sq.infect([90])
     # sq.view_current_state()
+    # sq.static_process(A)
+    # sq.view_current_state()
+    # v = sq.build_state_vector()
+    # print((v1 == v2).all(), (v == v1).all())
 
 
 main()
