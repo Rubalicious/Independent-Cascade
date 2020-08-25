@@ -14,6 +14,8 @@ class SquareLattice(object):
         # dimensions of square lattice
         self.n = n
         self.m = n+1
+        # number of nodes
+        self.N = n*(n+1)
 
         # create square lattice and collect positions of nodes
         # if os.path.exists('squarelattice.graphml'):
@@ -93,7 +95,8 @@ class SquareLattice(object):
             # each node is infectious for some number of days
             # assign number of days infectious for and a count to keep track
             # self.G.nodes[node]['infectious'] = [np.random.randint(0,5), 0]
-            self.G.nodes[node]['infectious'] = [np.random.poisson(4.0), 0]
+            self.G.nodes[node]['infectious'] = [1, 0]
+            # self.G.nodes[node]['infectious'] = [np.random.poisson(4.0), 0]
             # susceptible: flag == 0, infected: flag == 1, recovered: flag == 2
             self.G.nodes[node]['flag'] = 0
             out_degree = len(list(self.G.neighbors(node)))
@@ -103,6 +106,8 @@ class SquareLattice(object):
             for suc in list(self.G.neighbors(node)):
                 # assign to each edge of a node's successors
                 self.G[node][suc]['theta'] = np.round(theta[i], 3)
+                # may need to be symmetric
+                # self.G[suc][node]['theta'] = np.round(theta[i], 3)
                 # self.G[node][suc]['active'] = 0
                 i+=1
 
@@ -230,6 +235,7 @@ class SquareLattice(object):
     def sample_active_edges(self):
         '''
             samples active edges and returns a list of them
+            NEEDS TO BE ADAPTED FOR NODES INFECTIOUS FOR MULTIPLE TIME STEPS
         '''
         A = []
         c = 0
@@ -301,6 +307,25 @@ class SquareLattice(object):
         '''
         pass
 
+    def get_active_edge_weights(self):
+        '''
+            extract the active edge weights in the form of an adjacency matrix
+            whose values (g)_ab is the weight for probability of activation.
+        '''
+        n = len(self.G.nodes)
+        g = np.zeros((n,n))
+        thetas = np.zeros((n,n))
+        for a,b in self.G.edges:
+                theta = self.G[a][b]['theta']
+                # extract random weights
+                thetas[a,b] = theta
+                # thetas[b,a] = theta
+
+                # convert to underlying parameter
+                g[a,b] = -np.log(1/theta - 1)
+                # make it symmetric (may relax/omit later)
+                g[b,a] = g[a,b]
+        return g, thetas
 
 
 #========================================================
@@ -390,94 +415,3 @@ def compute_infection_kernel(G):
 
     K = 0
     return A1,A2
-
-def static_vs_dynamic():
-    n = 13
-    sq = SquareLattice(n)
-
-    # dynamic process:
-    def dynamic_process(sq, shuffle=0):
-        sq.infect([90])
-        sq.view_current_state()
-        A = sq.sample_active_edges()
-        sq.view_active_edges(A)
-        while not sq.is_totally_infected():
-            sq.update(A, shuffle)
-        v = sq.build_state_vector()/2
-        sq.view_current_state()
-        sq.reset()
-        return A, v
-
-    def static_process_exp(sq):
-        sq.infect([90])
-        # sq.view_current_state()
-        A = sq.sample_active_edges()
-        sq.static_process(A)
-        # sq.view_current_state()
-        v = sq.build_state_vector()
-        sq.reset()
-        return A,v
-
-    A,v = dynamic_process(sq,1)
-    # A,v = static_process_exp(sq)
-    N = 1
-    for i in range(N):
-        A,w = dynamic_process(sq, 1)
-        # A,w = static_process_exp(sq)
-        sys.stdout.write('\r')
-        sys.stdout.write('{}% complete'.format(100*float(i)/N))
-        sys.stdout.flush()
-        v+=w
-    # print(v/N)
-    v = np.array(v)
-    v = np.reshape(v,(n,n+1))
-    plt.imshow(v/N, cmap='hot')
-    plt.colorbar()
-    # plt.plot(range(sq.n*sq.m), v/N)
-    plt.show()
-
-
-
-def main():
-    n = 3
-    sq = SquareLattice(n)
-
-    # create axes
-    # fig = plt.gcf()
-    # ax = plt.gca()
-    # line, = ax.plot([], [], 'o-', lw=2)
-    # def animate(i):
-    #     global sq
-    #     sq.update(A, shuffle)
-    '''
-    the following experiment ensures that the final configuration
-    is independent of the sub-steps taken to get there.
-
-    Given the same initial infected set and active edges,
-    simulate propagation of infection for random substeps.
-    '''
-    shuffle = 1 # shuffles the order in which infected nodes infect susceptible
-    sq.infect([6])
-    sq.view_current_state()
-    A = sq.sample_active_edges()
-    sq.view_active_edges(A)
-    while not sq.is_totally_infected():
-        sq.update(A, shuffle)
-
-    # fig.savefig('final_config1.png')
-    sq.reset()
-
-    #repeat
-    sq.infect([6])
-    sq.view_current_state()
-    sq.view_active_edges(A)
-    while not sq.is_totally_infected():
-        sq.update(A, shuffle)
-    # plt.savefig('final_config2.png')
-
-
-
-
-
-main()
-# demonstrate_active_edges(G)
