@@ -33,6 +33,10 @@ class SquareLattice(object):
         # edge color may change to red to reflect active edges
         self.edge_color = ['k']*len(self.G.edges)
 
+        # list of originally infected nodes
+        mid_seed = np.floor(self.N/2) if self.N%2 == 0 else np.floor(self.N/2 + self.n/2)
+        self.seed = [mid_seed] 
+
         # self.infect()
         # self.view_current_state()
 
@@ -95,10 +99,10 @@ class SquareLattice(object):
             # each node is infectious for some number of days
             # assign number of days infectious for and a count to keep track
             # self.G.nodes[node]['infectious'] = [np.random.randint(0,5), 0]
-            self.G.nodes[node]['infectious'] = [1, 0]
+            self.G.nodes[node]['infectious'] = [0, 0]
             # self.G.nodes[node]['infectious'] = [np.random.poisson(4.0), 0]
-            # susceptible: flag == 0, infected: flag == 1, recovered: flag == 2
-            self.G.nodes[node]['flag'] = 0
+            # susceptible: state == 0, infected: state == 1, recovered: state == 2
+            self.G.nodes[node]['state'] = 0
             out_degree = len(list(self.G.neighbors(node)))
             # generate random numbers
             theta = np.random.uniform(0,1,(out_degree))
@@ -106,10 +110,12 @@ class SquareLattice(object):
             for suc in list(self.G.neighbors(node)):
                 # assign to each edge of a node's successors
                 self.G[node][suc]['theta'] = np.round(theta[i], 3)
+                assert(self.G[node][suc]['theta'] == self.G[suc][node]['theta'])
                 # may need to be symmetric
                 # self.G[suc][node]['theta'] = np.round(theta[i], 3)
                 # self.G[node][suc]['active'] = 0
                 i+=1
+
 
     def view_current_state(self,view_edge_weights=False):
         '''
@@ -124,37 +130,61 @@ class SquareLattice(object):
         nx.draw(self.G, self.pos,
             node_color=self.node_color,
             edge_color=self.edge_color,
-            width=4
+            width=2,
+            node_size=90
         )
 
         plt.title('IC current state')
         # plt.savefig('IC current state')
         plt.show()
 
+    def plot_demo(self, n):
+        fig, axs = plt.subplots(1,n)
+
+        self.infect([15])
+
+        A = self.sample_active_edges()
+
+        c = 0
+        for i in range(n):
+            for j in range(n):
+                nx.draw(self.G, self.pos,
+                    node_color=self.node_color,
+                    edge_color=self.edge_color,
+                    width=1,
+                    node_size=50,
+                    ax = axs[i,j]
+                )
+                axs[i,j].set_title('t = {}'.format(c))
+                self.IC_step(shuffle=1)
+                c+=1
+        plt.show()
+
+
+
     def infect(self, infected=None):
         '''
-            choose one person to be infected and assign flags to each node
+            choose one person to be infected and assign states to each node
         '''
         # choose infected nodes here
         if infected is None:
-            infected = [90]
-
+            infected = self.seed
         for node in self.G.nodes:
             if node in infected:
                 self.node_color[node] = 'r'
-                self.G.nodes[node]['flag'] = 1
+                self.G.nodes[node]['state'] = 1
             else:
-                self.G.nodes[node]['flag'] = 0
+                self.G.nodes[node]['state'] = 0
 
     def build_state_vector(self):
-        '''This outputs a vector of flags defining whether each
+        '''This outputs a vector of states defining whether each
         node is infected or not'''
         N = self.n*self.m
         v = np.zeros((N,1))
         for i in self.G.nodes:
-            if self.G.nodes[i]['flag'] == 1:
+            if self.G.nodes[i]['state'] == 1:
                 v[i] = 1
-            if self.G.nodes[i]['flag'] == 2:
+            if self.G.nodes[i]['state'] == 2:
                 v[i] = 2
         return v
 
@@ -185,25 +215,23 @@ class SquareLattice(object):
                     l.sort()
                     l = tuple(l)
                     if l in A:
-                        self.G.nodes[nei]['flag'] = 1
+                        self.G.nodes[nei]['state'] = 1
                         self.node_color[nei] = 'r'
                         # if current_state != self.node_color:
-                        self.view_current_state()
+                        # self.view_current_state()
                 else:
                     # generate random number
                     rand = np.random.uniform(0,1)
                     if rand > self.G[inf][nei]['theta']:
                         # infect neighbor
-                        self.G.nodes[nei]['flag'] = 1
+                        self.G.nodes[nei]['state'] = 1
                         self.node_color[nei] = 'r'
-
-
                 #     self.view_current_state()
             # extract infectiousness of node
             infectious = self.G.nodes[inf]['infectious']
             if infectious[1] == infectious[0]:
                 # node recovers
-                self.G.nodes[inf]['flag'] = 2
+                self.G.nodes[inf]['state'] = 2
                 self.node_color[inf] = 'k'
             else:
                 # it is infectious for one more time step
@@ -215,13 +243,6 @@ class SquareLattice(object):
             updates the graph, changes node colors, plots current state
         '''
         self.IC_step(A, shuffle)
-        # # update colors
-        # for node in self.G.nodes:
-        #     if self.G.nodes[node]['flag'] == 1:
-        #         self.node_color[node] = 'r'
-        #     if self.G.nodes[node]['flag'] == 2:
-        #         self.node_color[node] = 'k'
-
         self.view_current_state()
 
     def is_totally_infected(self):
@@ -236,6 +257,7 @@ class SquareLattice(object):
         '''
             samples active edges and returns a list of them
             NEEDS TO BE ADAPTED FOR NODES INFECTIOUS FOR MULTIPLE TIME STEPS
+            returns a list of tuples
         '''
         A = []
         c = 0
@@ -288,7 +310,7 @@ class SquareLattice(object):
             for node in self.G.nodes:
                 if nx.has_path(Temp, inf, node):
                     self.node_color[node] = 'k'
-                    self.G.nodes[node]['flag'] = 2
+                    self.G.nodes[node]['state'] = 2
 
     def reset(self):
         '''
@@ -298,7 +320,7 @@ class SquareLattice(object):
         self.node_color = ['b']*self.n*self.m
         self.edge_color = ['k']*len(self.G.edges)
         for node in self.G.nodes:
-            self.G.nodes[node]['flag'] = 0
+            self.G.nodes[node]['state'] = 0
             self.G.nodes[node]['infectious'][1] = 0
 
     def collect_final_configuration(self):
@@ -326,6 +348,16 @@ class SquareLattice(object):
                 # make it symmetric (may relax/omit later)
                 g[b,a] = g[a,b]
         return g, thetas
+
+    def dynamic_process(self, shuffle=0, view=0):
+        self.infect()
+        if view == 1: self.view_current_state()
+        while not self.is_totally_infected():
+            self.IC_step(shuffle=shuffle)
+            if view == 1: self.view_current_state()
+        v = self.build_state_vector()/2
+        self.reset()
+        return v
 
 
 #========================================================
@@ -385,12 +417,12 @@ def LT_step():
     thresholds = np.zeros((len(v),1))
     for sus in susceptible:
         # collect weights of infected neighbors of sus
-        weights = [ G[sus][nei]['theta'] for nei in G.neighbors(sus) if G.nodes[nei]['flag'] == 1 ]
+        weights = [ G[sus][nei]['theta'] for nei in G.neighbors(sus) if G.nodes[nei]['state'] == 1 ]
         tot = np.sum(weights)
         cum_weights[sus] = tot
         thresholds[sus] = G.nodes[sus]['tau']
         if tot > G.nodes[sus]['tau']:
-            G.nodes[sus]['flag'] = 1
+            G.nodes[sus]['state'] = 1
     # check if all remaining susceptibles have higher
     # threshold than the sum total of infected neighbor weights
     if (cum_weights <= thresholds).all(): terminate = 1
