@@ -35,7 +35,7 @@ class SquareLattice(object):
 
         # list of originally infected nodes
         mid_seed = np.floor(self.N/2) if self.N%2 == 0 else np.floor(self.N/2 + self.n/2)
-        self.seed = [mid_seed] 
+        self.seed = [mid_seed]
 
         # self.infect()
         # self.view_current_state()
@@ -139,7 +139,7 @@ class SquareLattice(object):
         plt.show()
 
     def plot_demo(self, n):
-        fig, axs = plt.subplots(1,n)
+        fig, axs = plt.subplots(n,n)
 
         self.infect([15])
 
@@ -151,12 +151,12 @@ class SquareLattice(object):
                 nx.draw(self.G, self.pos,
                     node_color=self.node_color,
                     edge_color=self.edge_color,
-                    width=1,
+                    width=2,
                     node_size=50,
                     ax = axs[i,j]
                 )
                 axs[i,j].set_title('t = {}'.format(c))
-                self.IC_step(shuffle=1)
+                self.IC_step(A,shuffle=1)
                 c+=1
         plt.show()
 
@@ -341,7 +341,7 @@ class SquareLattice(object):
                 theta = self.G[a][b]['theta']
                 # extract random weights
                 thetas[a,b] = theta
-                # thetas[b,a] = theta
+                thetas[b,a] = theta
 
                 # convert to underlying parameter
                 g[a,b] = -np.log(1/theta - 1)
@@ -351,13 +351,14 @@ class SquareLattice(object):
 
     def dynamic_process(self, shuffle=0, view=0):
         self.infect()
+        sigma_in = self.build_state_vector()/2
         if view == 1: self.view_current_state()
         while not self.is_totally_infected():
             self.IC_step(shuffle=shuffle)
             if view == 1: self.view_current_state()
-        v = self.build_state_vector()/2
+        sigma = self.build_state_vector()/2
         self.reset()
-        return v
+        return sigma_in, sigma
 
 
 #========================================================
